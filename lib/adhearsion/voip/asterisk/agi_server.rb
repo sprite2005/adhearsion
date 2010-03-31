@@ -1,4 +1,6 @@
 require 'gserver'
+require 'adhearsion/voip/asterisk/asterisk_call'
+
 module Adhearsion
   module VoIP
     module Asterisk

@@ -6,11 +6,6 @@ module Adhearsion
       @calls ||= Calls.new
     end
   
-    def receive_call_from(io, &block)
-      active_calls << (call = Call.receive_from(io, &block))
-      call
-    end
-    
     def remove_inactive_call(call)
       active_calls.remove_inactive_call(call)
     end
@@ -106,61 +101,24 @@ module Adhearsion
   # accessible here as attributes    
   class Call
     
-    # This is basically a translation of ast_channel_reason2str() from main/channel.c and
-    # ast_control_frame_type in include/asterisk/frame.h in the Asterisk source code. When
-    # Asterisk jumps to the 'failed' extension, it sets a REASON channel variable to a number.
-    # The indexes of these symbols represent the possible numbers REASON could be.
-    ASTERISK_FRAME_STATES = [
-      :failure,     # "Call Failure (not BUSY, and not NO_ANSWER, maybe Circuit busy or down?)"
-      :hangup,      # Other end has hungup
-      :ring,        # Local ring
-      :ringing,     # Remote end is ringing
-      :answer,      # Remote end has answered
-      :busy,        # Remote end is busy
-      :takeoffhook, # Make it go off hook
-      :offhook,     # Line is off hook
-      :congestion,  # Congestion (circuits busy)
-      :flash,       # Flash hook
-      :wink,        # Wink
-      :option,      # Set a low-level option
-      :radio_key,   # Key Radio
-      :radio_unkey, # Un-Key Radio
-      :progress,    # Indicate PROGRESS
-      :proceeding,  # Indicate CALL PROCEEDING
-      :hold,        # Indicate call is placed on hold
-      :unhold,      # Indicate call is left from hold
-      :vidupdate    # Indicate video frame update
-    ]
+    attr_accessor :variables
+    attr_reader :inbox
     
-    
-    class << self
-      ##
-      # The primary public interface for creating a Call instance.
-      # Given an IO (probably a socket accepted from an Asterisk service),
-      # creates a Call instance which encapsulates everything we know about that call.
-      def receive_from(io, &block)
-        returning new(io, variable_parser_for(io).variables) do |call|
-          block.call(call) if block
-        end
-      end
-    
-      private
-      def variable_parser_for(io)
-        Variables::Parser.parse(io)
-      end
-      
-    end
-    
-    attr_accessor :io, :type, :variables, :originating_voip_platform, :inbox
-    def initialize(io, variables)
-      @io, @variables = io, variables.symbolize_keys
-      check_if_valid_call
+    def initialize(variables)
+      @variables = variables.symbolize_keys
       define_variable_accessors
-      set_originating_voip_platform!
       @tag_mutex = Mutex.new
       @tags = []
     end
 
+    def register_globally_as_active
+      Adhearsion.active_calls << self
+    end
+
+    def originating_voip_platform
+      raise NotImplementedError, "This is only implemented in subclasses of Call!"
+    end
+    
     def tags
       @tag_mutex.synchronize do
         return @tags.clone
@@ -196,23 +154,11 @@ module Adhearsion
     end
 
     def hangup!
-      io.close
       Adhearsion.remove_inactive_call self
     end
 
     def closed?
       io.closed?
-    end
-    
-    # Asterisk sometimes uses the "failed" extension to indicate a failed dial attempt.
-    # Since it may be important to handle these, this flag helps the dialplan Manager
-    # figure that out.
-    def failed_call?
-      @failed_call
-    end
-    
-    def hungup_call?
-      @hungup_call
     end
     
     # Adhearsion indexes calls by this identifier so they may later be found and manipulated. For calls from Asterisk, this
@@ -223,12 +169,7 @@ module Adhearsion
     #
     # Note: channel is used over unique ID because channel may be used to bridge two channels together.
     def unique_identifier
-      case originating_voip_platform
-        when :asterisk
-          variables[:channel] || variables[:uniqueid] || object_id
-        else
-          raise NotImplementedError
-      end
+      raise NotImplementedError, "Must be implemented in subclass!"
     end
     
     def define_variable_accessors(recipient=self)
@@ -237,15 +178,7 @@ module Adhearsion
       end
     end
     
-    def extract_failed_reason_from(environment)
-      if originating_voip_platform == :asterisk
-        failed_reason = environment.variable 'REASON'
-        failed_reason &&= ASTERISK_FRAME_STATES[failed_reason.to_i]
-        define_singleton_accessor_with_pair(:failed_reason, failed_reason, environment)
-      end
-    end
-    
-    private
+    protected
       
       def define_singleton_accessor_with_pair(key, value, recipient=self)
         recipient.metaclass.send :attr_accessor, key unless recipient.class.respond_to?("#{key}=")
@@ -449,5 +382,7 @@ module Adhearsion
       end
     
     end
+    
   end  
+
 end

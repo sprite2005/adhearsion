@@ -38,6 +38,7 @@ context "Adhearsion's component system" do
   
   test "initialization block should be called after the methods_for() blocks"
   
+
   test "defined methods should be recognized once defined" do
     run_component_code <<-RUBY
       methods_for :events do
@@ -63,6 +64,23 @@ context "Adhearsion's component system" do
         end
       end
     RUBY
+
+  test "the class constant should be available in the scope of a call context" do
+    sample_component_class = new_componenet_class_named('SampleComponent2')
+    sample_component_class.add_call_context
+
+    loader = load_dial_plan(<<-DIAL_PLAN)
+      some_context {
+        SampleComponent2
+      }
+    DIAL_PLAN
+    
+    flexmock(Adhearsion::DialPlan::Loader).should_receive(:load_dial_plan).and_return(loader)
+    tested_call = Adhearsion::VoIP::Asterisk::AsteriskCall.new(nil, :context => :some_context)
+    mock_config = flexmock 'a Configuration which communicates automatically_answer_incoming_calls properly',
+                    :automatically_answer_incoming_calls => false
+    flexmock(Adhearsion::Configuration).should_receive(:new).once.and_return mock_config
+    Adhearsion::Configuration.configure
     
   end
   
@@ -116,6 +134,12 @@ context "Adhearsion's component system" do
         and_return(component_paths + ["disabled"])
     flexstub(File).should_receive(:exists?).and_return true
     flexstub(File).should_receive(:directory?).and_return true
+    flexmock(Adhearsion::DialPlan::Loader).should_receive(:load_dial_plan).and_return(loader)
+    sample_call = Adhearsion::VoIP::Asterisk::AsteriskCall.new(nil, :context => :some_context)
+    mock_config = flexmock 'a Configuration which communicates automatically_answer_incoming_calls properly',
+                    :automatically_answer_incoming_calls => false
+    flexmock(Adhearsion::Configuration).should_receive(:new).once.and_return mock_config
+    Adhearsion::Configuration.configure
     
     manager = Adhearsion::Components::ComponentManager.new(components_dir_path)
     component_paths.each do |path|

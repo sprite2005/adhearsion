@@ -176,7 +176,7 @@ module Adhearsion
         nil
       end
       
-      class ContextNameCollector# < ::BlankSlate
+      class ContextNameCollector
         
         class << self
 
