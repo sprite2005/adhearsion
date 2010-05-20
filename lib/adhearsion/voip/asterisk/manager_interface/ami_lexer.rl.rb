@@ -6,7 +6,7 @@ module Adhearsion
       module Manager
         class AbstractAsteriskManagerInterfaceStreamLexer
 
-          BUFFER_SIZE = 8.kilobytes unless defined? BUFFER_SIZE
+          BUFFER_SIZE = 4096.kilobytes unless defined? BUFFER_SIZE
 
           %%{
           	machine ami_protocol_parser;
